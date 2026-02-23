@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSRS Leviathan Prayer Flick Trainer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #2b2214;
+            color: #ff981f;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px;
+            user-select: none;
+            min-height: 100vh;
+        }
+
+        /* ── Main Layout: game + sidebar ── */
+        #game-container {
+            display: flex;
+            gap: 0;
+            border: 3px solid #474134;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.7);
+        }
+
+        /* ══ GAME VIEWPORT ══ */
+        #game-screen {
+            width: 530px;
+            height: 400px;
+            background: #1a1510;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Arena ground — sandy/rocky isometric floor */
+        #arena-floor {
+            position: absolute;
+            inset: 0;
+            background: 
+                radial-gradient(ellipse 120% 100% at 70% 25%, #3a322a 0%, #252018 40%, #151210 80%);
+        }
+        /* Pool/water area upper-right where boss sits */
+        #pool {
+            position: absolute;
+            top: -30px;
+            right: -20px;
+            width: 280px;
+            height: 220px;
+            background: radial-gradient(ellipse at 50% 50%, 
+                rgba(25,40,55,0.9) 0%, 
+                rgba(15,25,35,0.7) 40%,
+                transparent 70%);
+            border-radius: 50%;
+        }
+        /* Pool edge */
+        #pool::after {
+            content: '';
+            position: absolute;
+            inset: 15px;
+            border-radius: 50%;
+            border: 2px solid rgba(60,80,100,0.3);
+        }
+
+        /* Boss — upper right, facing left towards player */
+        #boss {
+            width: 170px;
+            height: 135px;
+            background-image: url('https://oldschool.runescape.wiki/images/The_Leviathan.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            position: absolute;
+            top: 5px;
+            right: 30px;
+            z-index: 5;
+            filter: drop-shadow(0 0 6px rgba(80,50,120,0.4));
+            transition: filter 0.3s;
+            transform: scaleX(1);
+            cursor: grab;
+        }
+        #boss:active { cursor: grabbing; }
+        #boss.dragging { opacity: 0.8; }
+        #boss.roaring {
+            filter: drop-shadow(0 0 25px rgba(255,40,40,0.8)) brightness(1.3);
+            animation: boss-shake 0.08s infinite alternate;
+        }
+        @keyframes boss-shake {
+            from { transform: translate(-1px, -1px); }
+            to { transform: translate(1px, 1px); }
+        }
+
+        /* HP bar above boss */
+        #boss-hp-bar {
+            position: absolute;
+            top: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            text-align: center;
+            z-index: 20;
+        }
+        #boss-name {
+            font-size: 11px;
+            color: #0f0;
+            text-shadow: 1px 1px 0 #000;
+        }
+        #hp-bar-outer {
+            width: 100%;
+            height: 14px;
+            background: #300;
+            border: 1px solid #555;
+            margin-top: 1px;
+        }
+        #hp-bar-inner {
+            width: 93%;
+            height: 100%;
+            background: linear-gradient(180deg, #0c0 0%, #070 100%);
+        }
+        #hp-text {
+            position: absolute;
+            top: 15px;
+            width: 100%;
+            text-align: center;
+            font-size: 10px;
+            color: #fff;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        #lure {
+            position: absolute;
+            top: 25px;
+            left: 410px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            z-index: 6;
+            background: #444;
+            transition: background-color 0.1s, box-shadow 0.1s;
+        }
+
+        /* Player — center-left of arena */
+        #player {
+            width: 28px;
+            height: 34px;
+            position: absolute;
+            bottom: 100px;
+            left: 170px;
+            z-index: 5;
+            cursor: grab;
+        }
+        #player:active { cursor: grabbing; }
+        #player-body {
+            width: 100%; height: 100%;
+            background: #7b6a50;
+            border: 2px solid #4a3c28;
+            border-radius: 3px 3px 2px 2px;
+            position: relative;
+        }
+        #player-body::before {
+            content: '';
+            position: absolute;
+            top: -8px; left: 50%; transform: translateX(-50%);
+            width: 14px; height: 14px;
+            background: #c4a97d;
+            border-radius: 50%;
+            border: 1px solid #4a3c28;
+        }
+
+        /* Projectile orbs — travel from boss (upper-right) to player (center-left) */
+        .projectile {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* Hitsplats */
+        .hitsplat {
+            position: absolute;
+            z-index: 25;
+            pointer-events: none;
+            animation: splat-float 0.9s ease-out forwards;
+        }
+        .hitsplat-inner {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 1px 1px 0 #000;
+        }
+        .hitsplat-block .hitsplat-inner { background: radial-gradient(circle, #1188dd, #0066aa); }
+        .hitsplat-hit .hitsplat-inner { background: radial-gradient(circle, #dd2222, #881111); }
+        @keyframes splat-float {
+            0% { opacity: 1; transform: translateY(0); }
+            70% { opacity: 1; }
+            100% { opacity: 0; transform: translateY(-25px); }
+        }
+
+        /* Flash overlay */
+        #flash {
+            position: absolute;
+            inset: 0;
+            z-index: 15;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.06s;
+        }
+
+        /* ── Volley Level Indicator (RuneLite style) ── */
+        #volley-info {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            z-index: 20;
+            background: rgba(0,0,0,0.82);
+            border: 1px solid #333;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            min-width: 200px;
+        }
+        #volley-title {
+            font-weight: bold;
+            color: #ff981f;
+            margin-bottom: 4px;
+            font-size: 13px;
+        }
+        #volley-pips {
+            display: flex;
+            gap: 3px;
+            margin-bottom: 5px;
+        }
+        .volley-pip {
+            width: 24px;
+            height: 12px;
+            border: 1px solid #555;
+            border-radius: 2px;
+            font-size: 9px;
+            text-align: center;
+            line-height: 12px;
+            color: #aaa;
+        }
+        .volley-pip.current { border-color: #ff0; }
+        .volley-pip.passed { background: #0a0; }
+        .volley-pip.active { background: #c00; }
+        #volley-stats {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .volley-stat {
+            color: #aaa;
+            font-size: 11px;
+        }
+        .volley-stat span {
+            color: #fff;
+            font-weight: bold;
+        }
+        #react-time {
+            text-align: center;
+            margin-top: 3px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        #react-label {
+            font-size: 10px;
+            color: #aaa;
+            text-align: center;
+        }
+
+        /* Countdown */
+        #countdown {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 72px;
+            font-weight: bold;
+            color: #ff981f;
+            text-shadow: 2px 2px 8px #000;
+            z-index: 100;
+        }
+
+        /* ══ RIGHT SIDEBAR — OSRS CLIENT STYLE ══ */
+        #sidebar {
+            width: 245px;
+            background: #3e3529;
+            display: flex;
+            flex-direction: column;
+            border-left: 2px solid #474134;
+        }
+
+        /* Top icon row (combat/stats/quests etc) */
+        .tab-row {
+            display: flex;
+            height: 33px;
+            background: #2d2518;
+            border-bottom: 1px solid #1a1610;
+        }
+        .tab-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: default;
+            background: #3a2f22;
+            border-right: 1px solid #1a1610;
+            font-size: 14px;
+            opacity: 0.5;
+        }
+        .tab-btn.active { background: #4a3f32; opacity: 1; border-bottom: 2px solid #ff981f; }
+
+        /* Inventory section (top half of sidebar) */
+        #inv-section {
+            height: 128px;
+            background: #252017;
+            background-image: linear-gradient(180deg, rgba(50,42,30,0.2) 0%, transparent 30%);
+            border-bottom: 2px solid #1a1610;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            padding: 4px 6px;
+            gap: 1px;
+        }
+        .inv-slot {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .inv-item {
+            width: 32px;
+            height: 32px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            image-rendering: auto;
+            opacity: 0.7;
+        }
+
+        /* Prayer tab label */
+        .section-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 3px 8px;
+            background: #2d2518;
+            border-bottom: 1px solid #1a1610;
+            font-size: 11px;
+        }
+        .section-label .pts {
+            color: #33cccc;
+        }
+
+        /* ── Prayer Grid (5 col) ── */
+        #prayer-grid {
+            flex: 1;
+            background: #252017;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            padding: 4px 6px;
+            gap: 0;
+        }
+        .p-slot {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            aspect-ratio: 1 / 1.15;
+            cursor: default;
+            position: relative;
+        }
+        .p-slot.click {
+            cursor: pointer;
+        }
+        .p-slot.click:hover {
+            background: rgba(255,255,255,0.05);
+            border-radius: 2px;
+        }
+        .p-icon {
+            width: 33px;
+            height: 33px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0.3;
+            filter: brightness(0.5);
+            transition: opacity 0.08s, filter 0.08s;
+        }
+        .p-slot.click .p-icon {
+            opacity: 0.65;
+            filter: brightness(0.8);
+        }
+        .p-slot.click:hover .p-icon {
+            opacity: 0.85;
+            filter: brightness(1);
+        }
+        .p-slot.on .p-icon {
+            opacity: 1;
+            filter: brightness(1) drop-shadow(0 0 2px rgba(255,255,255,0.5));
+        }
+        .p-slot.on {
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+        }
+        .p-slot.on::after {
+            content: '';
+            position: absolute;
+            inset: 3px;
+            border: 1px solid rgba(255,255,200,0.22);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* ══ BOTTOM CONTROLS ══ */
+        #controls {
+            background: #1e1a13;
+            border-top: 2px solid #3e3529;
+            padding: 8px 12px;
+            width: 780px;
+        }
+        #phase-name {
+            font-size: 14px;
+            color: #ff981f;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 6px;
+            text-shadow: 1px 1px 0 #000;
+        }
+        .stats-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        .sbox {
+            flex: 1;
+            background: #151210;
+            border: 1px solid #3a3020;
+            border-radius: 3px;
+            padding: 4px 6px;
+            text-align: center;
+        }
+        .sbox .lbl { font-size: 9px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; }
+        .sbox .val { font-size: 17px; font-weight: bold; }
+        .sbox .sub { font-size: 9px; color: #555; }
+        .c-green .val { color: #4CAF50; }
+        .c-red .val { color: #f44336; }
+        .c-gold .val { color: #ff981f; }
+        .c-blue .val { color: #64b5f6; }
+
+        #accuracy { font-size: 11px; color: #888; text-align: center; margin-bottom: 4px; }
+
+        .ctrl-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        select, button {
+            padding: 5px 10px;
+            font-size: 12px;
+            background: #3a2f22;
+            color: #ff981f;
+            border: 1px solid #564a3a;
+            cursor: pointer;
+            font-family: inherit;
+            border-radius: 2px;
+        }
+        select { flex: 1; }
+        button:hover { background: #4a3f32; }
+        .btn-go { background: #2d4a2d; border-color: #3d6a3d; color: #7fcc7f; }
+        .btn-go:hover { background: #3d5a3d; }
+        .btn-stop { background: #4a2d2d; border-color: #6a3d3d; color: #cc7f7f; }
+        .btn-stop:hover { background: #5a3d3d; }
+
+        .bottom-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 4px;
+        }
+        .vol { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #777; }
+        .vol input { width: 70px; accent-color: #ff981f; }
+        .hotkeys { font-size: 10px; color: #555; }
+        #lock-phase { accent-color: #ff981f; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- ══ Game Viewport ══ -->
+    <div id="game-screen">
+        <div id="arena-floor"></div>
+        <div id="pool"></div>
+        <div id="boss"></div>
+        <div id="lure"></div>
+
+        <div id="boss-hp-bar">
+            <div id="boss-name">The Leviathan</div>
+            <div id="hp-bar-outer"><div id="hp-bar-inner"></div></div>
+            <div id="hp-text">2528 / 2700</div>
+        </div>
+
+        <div id="player"><div id="player-body"></div></div>
+        <div id="flash"></div>
+
+        <!-- Volley Level (RuneLite style) -->
+        <div id="volley-info">
+            <div id="volley-title">Volley Level:</div>
+            <div id="volley-pips"></div>
+            <div id="volley-stats">
+                <div class="volley-stat">Atk Speed: <span id="v-speed">—</span></div>
+                <div class="volley-stat">Travel: <span id="v-travel">—</span></div>
+            </div>
+            <div id="react-label">Time to React</div>
+            <div id="react-time" style="color:#0f0;">—</div>
+        </div>
+
+        <div id="countdown">3</div>
+    </div>
+
+    <!-- ══ Right Sidebar ══ -->
+    <div id="sidebar">
+        <!-- Top tab row -->
+        <div class="tab-row">
+            <div class="tab-btn">⚔️</div>
+            <div class="tab-btn">📊</div>
+            <div class="tab-btn">📜</div>
+            <div class="tab-btn active">🎒</div>
+        </div>
+
+        <!-- Inventory (abbreviated) -->
+        <div id="inv-section">
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Twisted_bow.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Toxic_blowpipe.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Ancient_staff.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Rune_pouch.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Ranging_potion(4).png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Super_restore(4).png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Super_restore(4).png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Stamina_potion(4).png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+            <div class="inv-slot"><div class="inv-item" style="background-image:url('https://oldschool.runescape.wiki/images/Shark.png')"></div></div>
+        </div>
+
+        <!-- Prayer tab row -->
+        <div class="tab-row">
+            <div class="tab-btn">🗡️</div>
+            <div class="tab-btn active">✝️</div>
+            <div class="tab-btn">✨</div>
+        </div>
+
+        <div class="section-label">
+            <span>Prayer</span>
+            <span class="pts">🙏 <span id="pp">99</span>/99</span>
+        </div>
+
+        <!-- Prayer Grid: 5-col, authentic layout -->
+        <div id="prayer-grid">
+            <!-- Row 1 -->
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Thick_Skin.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Burst_of_Strength.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Clarity_of_Thought.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Sharp_Eye.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Mystic_Will.png')"></div></div>
+            <!-- Row 2 -->
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Rock_Skin.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Superhuman_Strength.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Improved_Reflexes.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Rapid_Restore.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Rapid_Heal.png')"></div></div>
+            <!-- Row 3 -->
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Protect_Item.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Hawk_Eye.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Mystic_Lore.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Steel_Skin.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Ultimate_Strength.png')"></div></div>
+            <!-- Row 4: PROTECTION PRAYERS -->
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Incredible_Reflexes.png')"></div></div>
+            <div class="p-slot click" id="s-magic" data-p="magic"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Protect_from_Magic.png')"></div></div>
+            <div class="p-slot click" id="s-range" data-p="range"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Protect_from_Missiles.png')"></div></div>
+            <div class="p-slot click" id="s-melee" data-p="melee"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Protect_from_Melee.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Eagle_Eye.png')"></div></div>
+            <!-- Row 5 -->
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Mystic_Might.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Retribution.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Redemption.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Smite.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Preserve.png')"></div></div>
+            <!-- Row 6 -->
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Chivalry.png')"></div></div>
+            <div class="p-slot"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Piety.png')"></div></div>
+            <div class="p-slot click" id="s-rigour" data-p="rigour"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Rigour.png')"></div></div>
+            <div class="p-slot click" id="s-augury" data-p="augury"><div class="p-icon" style="background-image:url('https://oldschool.runescape.wiki/images/Augury.png')"></div></div>
+            <div class="p-slot"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+    <div id="phase-name">Select Phase & Press Start</div>
+    <div class="stats-row">
+        <div class="sbox c-green"><div class="lbl">Blocked</div><div class="val" id="stat-hits">0</div></div>
+        <div class="sbox c-red"><div class="lbl">Damage</div><div class="val" id="stat-miss">0</div></div>
+        <div class="sbox c-gold"><div class="lbl">Streak</div><div class="val" id="stat-streak">0</div><div class="sub">Best: <span id="stat-best">0</span></div></div>
+        <div class="sbox c-blue"><div class="lbl">Tick</div><div class="val" id="stat-tick">0</div></div>
+    </div>
+    <div id="accuracy">Accuracy: —</div>
+    <div class="ctrl-row">
+        <select id="phase-sel">
+            <option value="0">Phase 1: 3t Atk / 4t Travel (Mage/Range)</option>
+            <option value="1">Phase 2: 2t Atk / 4t Travel (Mage/Range)</option>
+            <option value="2">Phase 3: 2t Atk / 4t Travel (All Styles)</option>
+            <option value="3">Phase 4: 1t Atk / 4t Travel (Mage/Range)</option>
+            <option value="4" selected>Phase 5: 1t Atk / 4t Travel (All Styles)</option>
+            <option value="5">Phase 6: 1t Atk / 2t Travel (All Styles)</option>
+            <option value="6">Phase 7: 1t Atk / 0t Travel (All Styles)</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#ccc;white-space:nowrap;cursor:pointer;">
+            <input type="checkbox" id="lock-phase" checked> 🔒 Lock
+        </label>
+        <button class="btn-go" onclick="initCountdown()">▶ Start</button>
+        <button class="btn-stop" onclick="stopGame()">■ Reset</button>
+    </div>
+    <div class="bottom-row">
+        <div class="vol">🔊 <input type="range" id="vol" min="0" max="100" value="35"> <span id="vol-lbl">35%</span></div>
+        <div class="hotkeys">1 Mage · 2 Range · 3 Melee · Drag boss/player to reposition</div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  AUDIO — 8-bit style OSRS synth sounds
+// ═══════════════════════════════════════════
+const AC = window.AudioContext || window.webkitAudioContext;
+let ac = null;
+function initAC() { if (!ac) ac = new AC(); if (ac.state === 'suspended') ac.resume(); }
+function vol() { return parseInt(document.getElementById('vol').value) / 100; }
+document.getElementById('vol').addEventListener('input', e => {
+    document.getElementById('vol-lbl').textContent = e.target.value + '%';
+});
+
+// Quantize to 8-bit feel
+function quantize8bit(buffer) {
+    const d = buffer.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+        d[i] = Math.round(d[i] * 16) / 16; // 4-bit quantization for crunchier sound
+    }
+}
+
+// ── Magic orb: icy swoosh (OSRS water blast style) ──
+function sndMagic() {
+    initAC(); const v = vol(); if (!v) return;
+    const t = ac.currentTime;
+    const dur = 0.3;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+        const p = i / d.length;
+        // Swept noise + sine
+        d[i] = ((Math.random() * 2 - 1) * 0.4 + Math.sin(i * 0.08 * (1 - p * 0.7)) * 0.6) 
+               * Math.exp(-p * 4) * (1 - Math.pow(p, 0.3) * 0.5);
+    }
+    quantize8bit(buf);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const bpf = ac.createBiquadFilter(); bpf.type = 'bandpass'; bpf.frequency.value = 1800; bpf.Q.value = 1.5;
+    const g = ac.createGain(); g.gain.value = v * 0.2;
+    src.connect(bpf).connect(g).connect(ac.destination);
+    src.start(t); src.stop(t + dur);
+}
+
+// ── Range orb: arrow/bolt twang ──
+function sndRange() {
+    initAC(); const v = vol(); if (!v) return;
+    const t = ac.currentTime;
+    const dur = 0.18;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+        const p = i / d.length;
+        const freq = 1400 * (1 - p * 0.8);
+        d[i] = (Math.sin(i / ac.sampleRate * freq * Math.PI * 2) * 0.5 + (Math.random() * 2 - 1) * 0.3)
+               * Math.exp(-p * 6);
+    }
+    quantize8bit(buf);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const hpf = ac.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 800;
+    const g = ac.createGain(); g.gain.value = v * 0.18;
+    src.connect(hpf).connect(g).connect(ac.destination);
+    src.start(t); src.stop(t + dur);
+}
+
+// ── Melee orb: heavy thud ──
+function sndMelee() {
+    initAC(); const v = vol(); if (!v) return;
+    const t = ac.currentTime;
+    const dur = 0.2;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+        const p = i / d.length;
+        const freq = 200 * (1 - p * 0.7);
+        d[i] = (Math.sin(i / ac.sampleRate * freq * Math.PI * 2) * 0.7 
+              + Math.sin(i / ac.sampleRate * freq * 0.5 * Math.PI * 2) * 0.3)
+              * Math.exp(-p * 5);
+    }
+    quantize8bit(buf);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const lpf = ac.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 500;
+    const g = ac.createGain(); g.gain.value = v * 0.25;
+    src.connect(lpf).connect(g).connect(ac.destination);
+    src.start(t); src.stop(t + dur);
+}
+
+// ── Prayer click ──
+function sndClick() {
+    initAC(); const v = vol(); if (!v) return;
+    const t = ac.currentTime;
+    const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = 2200;
+    const g = ac.createGain(); g.gain.setValueAtTime(v * 0.06, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.03);
+}
+
+// ── Hit through prayer ──
+function sndHit() {
+    initAC(); const v = vol(); if (!v) return;
+    const t = ac.currentTime;
+    const dur = 0.15;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+        const p = i / d.length;
+        d[i] = (Math.sin(i / ac.sampleRate * (350 - 200*p) * Math.PI * 2) * 0.5 
+              + (Math.random()*2-1) * 0.5) * Math.exp(-p * 6);
+    }
+    quantize8bit(buf);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const g = ac.createGain(); g.gain.value = v * 0.2;
+    src.connect(g).connect(ac.destination); src.start(t); src.stop(t + dur);
+}
+
+// ── Block (prayer correct) ──
+function sndBlock() {
+    initAC(); const v = vol(); if (!v) return;
+    const t = ac.currentTime;
+    const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = 900;
+    const g = ac.createGain(); g.gain.setValueAtTime(v * 0.04, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.06);
+}
+
+// ── Roar ──
+function sndRoar() {
+    initAC(); const v = vol(); if (!v) return;
+    const t = ac.currentTime;
+    const dur = 0.7;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+        const p = i / d.length;
+        d[i] = (Math.random()*2-1) * Math.sin(p * 30) * Math.exp(-p * 2.5);
+    }
+    quantize8bit(buf);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const lpf = ac.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 350;
+    const g = ac.createGain(); g.gain.value = v * 0.3;
+    src.connect(lpf).connect(g).connect(ac.destination); src.start(t); src.stop(t + dur);
+}
+
+const atkSnd = { magic: sndMagic, range: sndRange, melee: sndMelee };
+
+// ═══════════════════════════════════════════
+//  GAME ENGINE
+// ═══════════════════════════════════════════
+const TICK = 600; // ms
+
+const styles = {
+    magic: { id:'magic', color:'#00ccff', glow:'0 0 10px #00ccff, 0 0 3px #0088cc', lure:'#00ccff' },
+    range: { id:'range', color:'#44ff44', glow:'0 0 10px #44ff44, 0 0 3px #22aa22', lure:'#44ff44' },
+    melee: { id:'melee', color:'#ff7700', glow:'0 0 10px #ff7700, 0 0 3px #cc4400', lure:'#ff7700' }
+};
+
+// Phases now model the actual Leviathan volley progression
+const phases = [
+    { name:"Phase 1: 3t Atk / 4t Travel", cd:3, pool:['magic','range'], travel:4, adv:8 },
+    { name:"Phase 2: 2t Atk / 4t Travel", cd:2, pool:['magic','range'], travel:4, adv:10 },
+    { name:"Phase 3: 2t Atk / All Styles", cd:2, pool:['magic','range','melee'], travel:4, adv:10 },
+    { name:"Phase 4: 1t Atk / 4t Travel", cd:1, pool:['magic','range'], travel:4, adv:12 },
+    { name:"Phase 5: 1t Atk / 4t Travel (All)", cd:1, pool:['magic','range','melee'], travel:4, adv:15 },
+    { name:"Phase 6: 1t Atk / 2t Travel", cd:1, pool:['magic','range','melee'], travel:2, adv:15 },
+    { name:"Phase 7: 1t Atk / 0t Travel", cd:1, pool:['magic','range','melee'], travel:0, adv:Infinity },
+];
+
+// Projectile origin (boss position) and target (player position) — DRAGGABLE
+let bossX = 430, bossY = 80;
+let playerX = 182, playerY = 268;
+
+let interval = null, tick = 0;
+let prayer = null, projs = [];
+let hits = 0, misses = 0, streak = 0, best = 0, missStreak = 0;
+let phaseIdx = 0, atkCount = 0, nextAtk = 0;
+let roaring = false, roarLeft = 0;
+
+// ── Drag Logic (boss & player) ──
+function makeDraggable(el, getX, getY, setPos) {
+    let dragging = false, offX, offY;
+    el.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        dragging = true;
+        const rect = document.getElementById('game-screen').getBoundingClientRect();
+        offX = e.clientX - (rect.left + getX());
+        offY = e.clientY - (rect.top + getY());
+        el.classList.add('dragging');
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const rect = document.getElementById('game-screen').getBoundingClientRect();
+        let nx = e.clientX - rect.left - offX;
+        let ny = e.clientY - rect.top - offY;
+        // Clamp inside game screen
+        nx = Math.max(0, Math.min(530 - el.offsetWidth, nx));
+        ny = Math.max(0, Math.min(400 - el.offsetHeight, ny));
+        setPos(nx, ny);
+    });
+    document.addEventListener('mouseup', () => {
+        if (dragging) { dragging = false; el.classList.remove('dragging'); }
+    });
+}
+
+// Boss drag — updates bossX/bossY and repositions visually
+const bossEl = document.getElementById('boss');
+const lureEl = document.getElementById('lure');
+const hpBarEl = document.getElementById('boss-hp-bar');
+const poolEl = document.getElementById('pool');
+
+// Convert boss from right-positioned to left-positioned for dragging
+bossEl.style.right = 'auto';
+bossEl.style.left = bossX - 85 + 'px'; // center of 170px boss
+bossEl.style.top = bossY - 40 + 'px';
+
+makeDraggable(bossEl,
+    () => parseInt(bossEl.style.left),
+    () => parseInt(bossEl.style.top),
+    (x, y) => {
+        bossEl.style.left = x + 'px';
+        bossEl.style.top = y + 'px';
+        bossX = x + 85; // center X
+        bossY = y + 60;  // center Y
+        // Move lure + hp bar with boss
+        lureEl.style.left = (x + 65) + 'px';
+        lureEl.style.top = (y + 20) + 'px';
+        lureEl.style.right = 'auto';
+        hpBarEl.style.left = (x + 85) + 'px';
+        hpBarEl.style.top = y + 'px';
+        hpBarEl.style.transform = 'translateX(-50%)';
+        // Move pool behind boss
+        poolEl.style.left = (x - 50) + 'px';
+        poolEl.style.top = (y - 60) + 'px';
+        poolEl.style.right = 'auto';
+    }
+);
+
+// Player drag
+const playerEl = document.getElementById('player');
+playerEl.style.bottom = 'auto';
+playerEl.style.left = playerX + 'px';
+playerEl.style.top = playerY + 'px';
+
+makeDraggable(playerEl,
+    () => parseInt(playerEl.style.left),
+    () => parseInt(playerEl.style.top),
+    (x, y) => {
+        playerEl.style.left = x + 'px';
+        playerEl.style.top = y + 'px';
+        playerX = x + 14; // center of 28px player
+        playerY = y + 17;
+    }
+);
+
+// ── Prayer Handling ──
+document.querySelectorAll('.p-slot.click').forEach(el => {
+    el.addEventListener('click', () => {
+        const p = el.dataset.p;
+        if (p === 'rigour' || p === 'augury') { el.classList.toggle('on'); sndClick(); return; }
+        togglePrayer(p);
+    });
+});
+document.addEventListener('keydown', e => {
+    if (e.key === '1') togglePrayer('magic');
+    if (e.key === '2') togglePrayer('range');
+    if (e.key === '3') togglePrayer('melee');
+});
+
+function togglePrayer(s) {
+    sndClick();
+    ['magic','range','melee'].forEach(x => document.getElementById('s-'+x).classList.remove('on'));
+    if (prayer === s) { prayer = null; } 
+    else { prayer = s; document.getElementById('s-'+s).classList.add('on'); }
+}
+
+// ── Volley Level UI ──
+function updateVolleyUI() {
+    const ph = phases[phaseIdx];
+    const pips = document.getElementById('volley-pips');
+    pips.innerHTML = '';
+    for (let i = 0; i < phases.length; i++) {
+        const d = document.createElement('div');
+        d.className = 'volley-pip';
+        d.textContent = i + 1;
+        if (i < phaseIdx) d.classList.add('passed');
+        else if (i === phaseIdx) d.classList.add('active');
+        pips.appendChild(d);
+    }
+    document.getElementById('v-speed').textContent = ph.cd + ' tick';
+    document.getElementById('v-travel').textContent = ph.travel + ' tick';
+    const reactMs = ((ph.cd + ph.travel) * TICK / 1000);
+    const rt = document.getElementById('react-time');
+    rt.textContent = '~' + reactMs.toFixed(1) + 's';
+    rt.style.color = reactMs >= 1.8 ? '#0f0' : reactMs >= 1.0 ? '#ff0' : '#f33';
+}
+
+// ── Game Flow ──
+function initCountdown() {
+    stopGame();
+    phaseIdx = parseInt(document.getElementById('phase-sel').value);
+    document.getElementById('phase-name').textContent = phases[phaseIdx].name;
+    updateVolleyUI();
+
+    const ov = document.getElementById('countdown');
+    ov.style.display = 'flex';
+    let c = 3; ov.textContent = c;
+    const ci = setInterval(() => {
+        c--;
+        if (c > 0) ov.textContent = c;
+        else if (c === 0) ov.textContent = 'GO!';
+        else { clearInterval(ci); ov.style.display = 'none'; startGame(); }
+    }, 1000);
+}
+
+function startGame() {
+    tick = 0; atkCount = 0; nextAtk = 0;
+    hits = 0; misses = 0; streak = 0; best = 0; missStreak = 0;
+    roaring = false; roarLeft = 0;
+    document.getElementById('boss').classList.remove('roaring');
+    updateStats(); updateVolleyUI();
+    interval = setInterval(gameTick, TICK);
+}
+
+function gameTick() {
+    tick++;
+    document.getElementById('stat-tick').textContent = tick;
+    processHits();
+
+    if (roaring) {
+        roarLeft--;
+        if (roarLeft <= 0) {
+            roaring = false;
+            document.getElementById('boss').classList.remove('roaring');
+            document.getElementById('phase-name').textContent = phases[phaseIdx].name;
+            updateVolleyUI();
+        }
+        return;
+    }
+
+    nextAtk--;
+    if (nextAtk <= 0) {
+        const ph = phases[phaseIdx];
+        const sKey = ph.pool[Math.floor(Math.random() * ph.pool.length)];
+        spawnProjectile(styles[sKey], ph.travel);
+        atkCount++;
+        nextAtk = ph.cd;
+
+        if (atkCount >= ph.adv && phaseIdx < phases.length - 1 && !document.getElementById('lock-phase').checked) {
+            advancePhase();
+        }
+    }
+}
+
+function processHits() {
+    for (let i = projs.length - 1; i >= 0; i--) {
+        const p = projs[i];
+        if (p.hitTick <= tick) {
+            p.el.remove();
+            if (prayer !== p.style.id) {
+                misses++; missStreak++; streak = 0;
+                flash('rgba(150,0,0,0.35)');
+                sndHit();
+                showSplat(false);
+            } else {
+                hits++; streak++; missStreak = 0;
+                if (streak > best) best = streak;
+                sndBlock();
+                showSplat(true);
+            }
+            projs.splice(i, 1);
+            updateStats();
+        }
+    }
+}
+
+function spawnProjectile(style, travelTicks) {
+    atkSnd[style.id]();
+
+    // Update lure color
+    lureEl.style.backgroundColor = style.lure;
+    lureEl.style.boxShadow = `0 0 8px ${style.lure}`;
+
+    const el = document.createElement('div');
+    el.className = 'projectile';
+    el.style.backgroundColor = style.color;
+    el.style.boxShadow = style.glow;
+
+    // Start at boss position (dynamic)
+    el.style.left = bossX + 'px';
+    el.style.top = bossY + 'px';
+
+    const travelSec = Math.max(travelTicks, 0.15) * (TICK / 1000);
+    el.style.transition = `left ${travelSec}s linear, top ${travelSec}s linear`;
+
+    document.getElementById('game-screen').appendChild(el);
+    
+    // Force reflow then animate to player (dynamic)
+    void el.offsetWidth;
+    el.style.left = playerX + 'px';
+    el.style.top = playerY + 'px';
+
+    const hitTick = travelTicks === 0 ? tick : tick + travelTicks;
+    projs.push({ style, hitTick, el });
+}
+
+function showSplat(blocked) {
+    const el = document.createElement('div');
+    el.className = 'hitsplat ' + (blocked ? 'hitsplat-block' : 'hitsplat-hit');
+    el.innerHTML = `<div class="hitsplat-inner">${blocked ? '0' : Math.floor(Math.random()*28+12)}</div>`;
+    el.style.left = (playerX - 4) + 'px';
+    el.style.top = (playerY - 30) + 'px';
+    document.getElementById('game-screen').appendChild(el);
+    setTimeout(() => el.remove(), 900);
+}
+
+function flash(color) {
+    const f = document.getElementById('flash');
+    f.style.background = color;
+    f.style.opacity = '1';
+    setTimeout(() => f.style.opacity = '0', 100);
+}
+
+function advancePhase() {
+    phaseIdx++;
+    document.getElementById('phase-sel').value = phaseIdx;
+    atkCount = 0;
+    roaring = true;
+    roarLeft = 5;
+    document.getElementById('boss').classList.add('roaring');
+    document.getElementById('phase-name').textContent = '*** ROAR! Phase Transition ***';
+    sndRoar();
+}
+
+function updateStats() {
+    document.getElementById('stat-hits').textContent = hits;
+    document.getElementById('stat-miss').textContent = misses;
+    document.getElementById('stat-streak').textContent = streak;
+    document.getElementById('stat-best').textContent = best;
+    const total = hits + misses;
+    document.getElementById('accuracy').textContent = total > 0 
+        ? `Accuracy: ${((hits/total)*100).toFixed(1)}% (${hits}/${total})`
+        : 'Accuracy: —';
+}
+
+function stopGame() {
+    if (interval) clearInterval(interval);
+    interval = null;
+    projs.forEach(p => p.el.remove());
+    projs = [];
+    document.getElementById('countdown').style.display = 'none';
+    document.getElementById('boss').classList.remove('roaring');
+    lureEl.style.backgroundColor = '#444';
+    lureEl.style.boxShadow = 'none';
+}
+</script>
+</body>
+</html>
